@@ -171,11 +171,11 @@ class AppGUI(tk.Tk, LoggerMixin, UIHelperMixin):
 
         # Prevent mismatched input/model
         if choice == "Text Generator" and itype == "Image":
-            self._output_box.insert("1.0", "❌ Error: Text Generator cannot run on an image.")
+            self._output_box.insert("1.0", "Error: Text Generator cannot run on an image.")
             self.log("Blocked: Tried to run Text Generator on image input")
             return
         if choice == "Image Classifier" and itype == "Text":
-            self._output_box.insert("1.0", "❌ Error: Image Classifier cannot run on text.")
+            self._output_box.insert("1.0", "Error: Image Classifier cannot run on text.")
             self.log("Blocked: Tried to run Image Classifier on text input")
             return
 
