@@ -1,4 +1,3 @@
-# gui_components.py
 """
 GUI functional that recieve inputs, outputs (randoms), OOPs utilized, and description of models:
 - Modular, with encapsulation and mixins.
@@ -15,6 +14,8 @@ import os
 class LoggerMixin:
     def log(self, msg: str):
         print(f"[GUI LOG] {msg}")
+        if hasattr(self, "_status"):
+            self._status.config(text=msg)
 
 class UIHelperMixin:
     def center_window(self, width=900, height=600):
@@ -43,14 +44,25 @@ class AppGUI(tk.Tk, LoggerMixin, UIHelperMixin):
 
         ttk.Label(top, text="Input type:").pack(side="left")
         self._input_type = tk.StringVar(value="Text")
-        ttk.Combobox(top, textvariable=self._input_type, values=["Text", "Image"], state="readonly", width=12).pack(side="left", padx=6)
+        input_box = ttk.Combobox(top, textvariable=self._input_type,
+                                 values=["Text", "Image"],
+                                 state="readonly", width=12)
+        input_box.pack(side="left", padx=6)
+        input_box.bind("<<ComboboxSelected>>", lambda e: self._update_input_mode())
 
         ttk.Label(top, text="Model:").pack(side="left", padx=(10,0))
         self._model_choice = tk.StringVar(value="Text Generator")
-        ttk.Combobox(top, textvariable=self._model_choice, values=["Text Generator", "Image Classifier"], state="readonly", width=20).pack(side="left", padx=6)
+        model_box = ttk.Combobox(top, textvariable=self._model_choice,
+                                 values=["Text Generator", "Image Classifier"],
+                                 state="readonly", width=20)
+        model_box.pack(side="left", padx=6)
+        model_box.bind("<<ComboboxSelected>>", lambda e: self._update_model_info())
 
         ttk.Button(top, text="Run", command=self._on_run).pack(side="right")
-        ttk.Button(top, text="Choose file", command=self._on_choose_file).pack(side="right", padx=6)
+        ttk.Button(top, text="Clear", command=self._on_clear).pack(side="right", padx=6)
+
+        self._choose_file_btn = ttk.Button(top, text="Choose file", command=self._on_choose_file)
+        self._choose_file_btn.pack(side="right", padx=6)
 
         # Main body
         body = ttk.Frame(self)
@@ -87,6 +99,20 @@ class AppGUI(tk.Tk, LoggerMixin, UIHelperMixin):
         self._oop_text.pack(fill="both", expand=True)
         self._update_oop_text()
 
+        # Status bar at bottom
+        self._status = tk.Label(
+            self,
+            text="Ready",
+            anchor="w",
+            bg="#f0f0f0",
+            relief="sunken",
+            bd=1
+        )
+        self._status.pack(fill="x", side="bottom", ipady=2)
+
+        # Initialize correct input mode
+        self._update_input_mode()
+
     # ---------- Helpers ----------
     def _on_choose_file(self):
         if self._input_type.get() == "Image":
@@ -104,7 +130,11 @@ class AppGUI(tk.Tk, LoggerMixin, UIHelperMixin):
         self._image_preview.image = tkimg
 
     def _update_model_info(self):
-        text = self._text_model.info() + "\n\n" + self._image_model.info()
+        choice = self._model_choice.get()
+        if choice == "Text Generator":
+            text = self._text_model.info()
+        else:
+            text = self._image_model.info()
         self._model_info.delete("1.0", "end")
         self._model_info.insert("1.0", text)
 
@@ -113,12 +143,25 @@ class AppGUI(tk.Tk, LoggerMixin, UIHelperMixin):
             "OOP aplicado:\n"
             "- Multiple inheritance: mixins in GUI\n"
             "- Decorators: log_call, timeit in models\n"
-            "- Encapsulation: private atributes  _state y _pipe\n"
-            "- Polimorfism y overriding: AIModel.run() es overrited\n"
+            "- Encapsulation: private attributes _state and _pipe\n"
+            "- Polymorphism and overriding: AIModel.run() is overridden\n"
             "- Modularity: models.py separated from GUI\n"
         )
         self._oop_text.delete("1.0", "end")
         self._oop_text.insert("1.0", s)
+
+    def _update_input_mode(self):
+        itype = self._input_type.get()
+        if itype == "Text":
+            self._text_input.config(state="normal")
+            self._choose_file_btn.config(state="disabled")
+            self._image_preview.configure(image=None)
+            self._image_preview.image = None
+            self._selected_image_path = None
+        else:  # Image
+            self._text_input.delete("1.0", "end")
+            self._text_input.config(state="disabled")
+            self._choose_file_btn.config(state="normal")
 
     # ---------- Run models ----------
     def _on_run(self):
@@ -126,14 +169,35 @@ class AppGUI(tk.Tk, LoggerMixin, UIHelperMixin):
         itype = self._input_type.get()
         self._output_box.delete("1.0","end")
 
+        # Prevent mismatched input/model
+        if choice == "Text Generator" and itype == "Image":
+            self._output_box.insert("1.0", "Error: Text Generator cannot run on an image.")
+            self.log("Blocked: Tried to run Text Generator on image input")
+            return
+        if choice == "Image Classifier" and itype == "Text":
+            self._output_box.insert("1.0", "Error: Image Classifier cannot run on text.")
+            self.log("Blocked: Tried to run Image Classifier on text input")
+            return
+
+        # Normal execution
         if choice == "Text Generator":
-            prompt = self._text_input.get("1.0","end").strip() or "Texto por defecto"
+            prompt = self._text_input.get("1.0","end").strip() or "Default text"
             res = self._text_model.run(prompt)
             self._output_box.insert("1.0", res)
         elif choice == "Image Classifier":
             if not self._selected_image_path:
-                self._output_box.insert("1.0","Selecciona una imagen primero")
+                self._output_box.insert("1.0","Select an image first")
                 return
             results = self._image_model.run(self._selected_image_path)
             lines = [f"{r['label']} ({r['score']})" for r in results]
             self._output_box.insert("1.0", "\n".join(lines))
+
+    # ---------- Clear ----------
+    def _on_clear(self):
+        self._output_box.delete("1.0", "end")
+        self._text_input.delete("1.0", "end")
+        self._image_preview.configure(image=None)
+        self._image_preview.image = None
+        self._selected_image_path = None
+        self.log("Cleared input and output")
+
